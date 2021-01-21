@@ -58,15 +58,15 @@ struct movie *create_movie(char *curr_line) {
 }
 
 
-struct movie *process_movie(char *file_path) {
-	//open the specified fil
+struct movie *process_movie(char *file_path, int *count) {
+	//open the specified file
 	FILE *movie_file = fopen(file_path, "r");	
 
 	char *curr_line = NULL;
 	size_t len = 0;
 	ssize_t nread;
 	char *token;
-	int count = 0;
+	*count = 0;
 
 	//head of linked list
 	struct movie *head = NULL;
@@ -75,8 +75,9 @@ struct movie *process_movie(char *file_path) {
 	//clear the header line
 	getline(&curr_line, &len, movie_file);
 
+	//for each line, fill out a new movie node and add it to the linked list
 	while ((nread = getline(&curr_line, &len, movie_file) != -1)) {
-		count++;
+		(*count)++;
 		struct movie *new_node = create_movie(curr_line);		
 		if (head == NULL) {
 			head = new_node;
@@ -88,10 +89,11 @@ struct movie *process_movie(char *file_path) {
 		}
 	}
 
+	//free dynamic allocations
 	free(curr_line);
 	fclose(movie_file);
 
-	printf("Processed file %s and parsed data for %i movies.\n\n", file_path, count);
+	printf("Processed file %s and parsed data for %i movies.\n\n", file_path, *count);
 	return head;
 }
 
@@ -101,7 +103,7 @@ void movies_by_year(struct movie *list){
 	int user_input;		
 
 	//second user input
-	printf("Enter the year for which you want to see movies:");
+	printf("Enter the year for which you want to see movies: ");
 	scanf("%d",&user_input);
 
 
@@ -116,17 +118,17 @@ void movies_by_year(struct movie *list){
 	}
 
 	if (count == 0) {
-		printf("No movies were released in that year\n");
+		printf("No movies were released in the year %i \n", user_input);
 	}
 
 	return;	
 }
 
-void movies_by_rating(struct movie *list) {
+void movies_by_rating(struct movie *list, int *count) {
 	struct movie *next = list;
 	struct movie *year_outer = list;
 	struct movie *leading_movie;
-	int length = 5;
+	int length = *count;
 	int years[length];	
 	int current_year = 0;
 	int current_rating = 0;
@@ -145,33 +147,32 @@ void movies_by_rating(struct movie *list) {
 		skip = TRUE;
 
 		//if the year has already been checked, skip it
-		for (i = 0; i < 5; i++) {
+		for (i = 0; i < length; i++) {
 			if (years[i] == *(year_outer->year)) {
 				skip = FALSE;
 			}
 		}
-		
+	
 		if (skip) {
+			//inner loop, for each year we iterate to find the largest rating value and print it to stdout
 			current_year = *(year_outer->year);
 			years[j] = current_year;
 			leading_movie = year_outer;
 			j++;		
 	
-			//inner loop, for each year we irerate to find the largest rating value
 			while (next != NULL) {
 				if ((*(next->year) == current_year) & (current_rating < *(next->rating_value))) {
 					current_rating = *(next->rating_value);
 					leading_movie = next;
 				}
+				//iterate to next movie for inner loop
 				next = next->next;
 			}
 			printf("%i %.1f %s \n", *(leading_movie->year), *(leading_movie->rating_value),leading_movie->title);	
 		}
-		//move to next movie
+		//move to next movie, outer loop
 		year_outer = year_outer->next;
 	}				
-
-
 }
 
 void movies_by_language(struct movie *list) {
@@ -199,7 +200,7 @@ void movies_by_language(struct movie *list) {
 	}
 }
 
-void menu(struct movie *list) {
+void menu(struct movie *list, int *count) {
 	int input;
 	int user_choice;
 
@@ -218,7 +219,7 @@ void menu(struct movie *list) {
 			movies_by_year(list);			
 		}
 		else if (input == 2) {
-			movies_by_rating(list);
+			movies_by_rating(list, count);
 		}
 		else if (input == 3) {
 			movies_by_language(list);
@@ -240,10 +241,15 @@ void menu(struct movie *list) {
 
 
 int main (int argc, char *argv[]){
+	int *count = malloc(sizeof(int));	
+
 	//process the file to give us our linked list
-	struct movie *list = process_movie(argv[1]);
+	struct movie *list = process_movie(argv[1], count);
 
-	menu(list);		
-
+	//call menu function to let users look at processed data
+	menu(list, count);		
+	
+	//free count data
+	free(count);
 	return 0;
 } 
