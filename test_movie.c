@@ -1,3 +1,7 @@
+/* Author: Nathanael Bowles
+ * Filename: movie.c
+ * Description: processes movie data into a struct and lets the user learn interact with that data via rating, year of release, and language.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +20,10 @@ struct movie
 	
 };
 
+/* Input: cstring of a line from the movie file from process_movie() function below
+ * Output: A movie struct with all that information found from the input string
+ * Note: Language is a single cstring, it is not split into an array of strings. I was a little lazy and just used strstr when this matters.
+ */
 struct movie *create_movie(char *curr_line) {
 	struct movie *curr_movie = malloc(sizeof(struct movie));
 	
@@ -57,7 +65,9 @@ struct movie *create_movie(char *curr_line) {
 	return curr_movie;
 }
 
-
+/* Input: a cstring containing the file path to file that contains the movie information, and a pointer to an int.
+ * Output: the head of a linked list of movies as processed from the input file. Additionally, how many movies were processed is included in count (used later when processing movies by rating per year)
+ */
 struct movie *process_movie(char *file_path, int *count) {
 	//open the specified file
 	FILE *movie_file = fopen(file_path, "r");	
@@ -97,6 +107,11 @@ struct movie *process_movie(char *file_path, int *count) {
 	return head;
 }
 
+/* Input: the first movie struct that acts as the head of the linked list. 
+ * Output: void. However, it will print to screen movies released in the year as specified by the user input
+ * User Input: An integer.
+ */
+
 void movies_by_year(struct movie *list){
 	struct movie *next = list;
 	int count = 0;
@@ -124,12 +139,21 @@ void movies_by_year(struct movie *list){
 	return;	
 }
 
+
+/* Input: the first movie struct that acts as the head of the linked list
+ * Output: void. However, it will print to screen the best rated movie for each year (out of years included)
+ * Note: Searching for best rated movie is done each time this is called in O(n^2) time. I'm already late on this assignment, sorting a linked list would be a hassle.
+ */
 void movies_by_rating(struct movie *list, int *count) {
+	//variables to iterate through the movies for inner and outer loop respectfully
 	struct movie *next = list;
 	struct movie *year_outer = list;
+	//markes the best rated movie for the iteration currently being compared
 	struct movie *leading_movie;
+	//redudent declerations so I don't have to deal with pointers here
 	int length = *count;
 	int years[length];	
+	//variables for storing temp values/ iterations through loops
 	int current_year = 0;
 	int current_rating = 0;
 	int i;
@@ -175,6 +199,10 @@ void movies_by_rating(struct movie *list, int *count) {
 	}				
 }
 
+/* Input: the first movie struct that acts as the ehad of the linked list.
+ * Output: Void. However, prints the titles of movies released in certain languages
+ */
+
 void movies_by_language(struct movie *list) {
 	struct movie *next = list; 
 	char user_input[20];	
@@ -200,9 +228,13 @@ void movies_by_language(struct movie *list) {
 	}
 }
 
+/* Input: First movie that acts as the head of the linked list. the count of movies processed beforehand/ how many movies in the linked list
+ * Output: No output.
+ * Note: Acts as the menu that lets the user interact with the movie information.
+ */
+
 void menu(struct movie *list, int *count) {
 	int input;
-	int user_choice;
 
 	do{
 		//menu options listed at the start of each loop
@@ -238,9 +270,11 @@ void menu(struct movie *list, int *count) {
 }
 
 
+/* Input: Input file path to the file with all the movie names
+ * Output: 0 because it's the main function and I'm not hooking it up to anything else.
+ */
 
-
-int main (int argc, char *argv[]){
+int main(int argc, char *argv[]){
 	int *count = malloc(sizeof(int));	
 
 	//process the file to give us our linked list
