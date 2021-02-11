@@ -1,6 +1,7 @@
-/*
- *
- *
+/* FILENAME: smallsh.c
+ * Author: Nathnael Bowles
+ * Description: running this code will run a basic shell. the three built in commands are ls, status, and exit. You can comment with #.
+ * otherwise, the comment will be run through execv. 
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -155,6 +156,7 @@ void run_process_background(struct inputs *commands, struct children_list *child
 		sigaction(SIGTSTP, &SIGTSTP_action, NULL);
 
 		//giant if/else statments dealing with redirecting to chose file OR to /dev/null if not specified
+		//This is for both input and output
 		if ((commands->output) != NULL) {
 			//open the output files	
 			output_fd = open((commands->output), O_WRONLY | O_TRUNC | O_CREAT, 0640);
@@ -263,7 +265,7 @@ void run_process_foreground(struct inputs *commands, int *recent_foreground) {
 		SIGINT_action.sa_handler = SIG_DFL;
 		sigaction(SIGINT, &SIGINT_action, NULL);
 
-		//redirection
+		//redirection for both input and output
 		if ((commands->output) != NULL) {
 			//open the output files	
 			output_fd = open((commands->output), O_WRONLY | O_TRUNC | O_CREAT, 0640);
@@ -299,8 +301,8 @@ void run_process_foreground(struct inputs *commands, int *recent_foreground) {
 
 		//printf("child(%d) running %s command\n",getpid(),temp);
 		execv(temp, (commands->arg));		
-		perror("execve");
-		exit(2);
+		printf("\n%s: no such file or directory\n", (commands->arg)[0]);
+		exit(1);
 		break;
 	default:
 		spawn_pid = waitpid(spawn_pid, &child_status, 0);
@@ -359,7 +361,7 @@ struct inputs *interpret_input(struct inputs *command) {
 	arguments = malloc(sizeof(char)*max_size);
 	arguments[0] = (command->arg)[0];
 
-	//check for inputs and outputs
+	//check for inputs and outputs to account for
 	if ((command->count) > 2) {
 		check = (command->arg)[1];	
 
@@ -540,6 +542,9 @@ void menu() {
 
 		//check for children to kill, no zombies allowed. note to self to put this in its own function in the future.
 		for (i = 0; i < children->child_count; i++) {
+			//reset important variables for this loop
+			child_status = -1;
+
 			waitpid((children->child_pid)[i], &child_status, WNOHANG);
 			//if a child was terminated, print what happened. Do this for both normal and abnormal terminations
 			if (WIFEXITED(child_status)) {
