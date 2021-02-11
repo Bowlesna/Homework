@@ -22,6 +22,12 @@
 #define FALSE 0
 
 
+//I tried everything I could to avoid global variables, but I couldn't figure out how to handle SIGTSTP alternating functions
+//so here we are.
+int SIGTSTP_mode;
+
+
+//Struct for holding user commands and related info
 struct inputs{
 	char *full_input;	
 	char **arg;
@@ -32,38 +38,56 @@ struct inputs{
 	char *input;
 };
 
+//Struct for carrying around the list of background children running. 
+//Used in menu() for checking if children need to be killed
 struct children_list{
 	int *child_pid;
 	int child_count;
 };
 
-
+//filler SIGINT handler function I am going to forget to delete
 void handle_SIGINT(int signo) {
-	
+	//filler	
 }
 
+
+//Signal handler for SIGTSTP. USes the SIGTSTP_mode global variable to switch foreground only mode on and off
 void handle_SIGTSTP(int signo) {
-	char *message = "Entering foreground only mode\n :";
-	write(STDOUT_FILENO,message, 32);
-		
+	if (!SIGTSTP_mode) {
+		char *message = "Entering foreground only mode\n\n:";
+		write(STDOUT_FILENO,message, 33);		
+		SIGTSTP_mode = TRUE;
+	}
+	else {
+		char *message = "Exiting foreground only mode\n\n:";
+		write(STDOUT_FILENO,message, 32);
+		SIGTSTP_mode = FALSE;		
+
+	}	
 }
 
-
-void exit_handling() {
+/* Input: None
+ * Output: when tis is called, finishes killing any children and exits the program
+ * Note: only called from menu()
+ */
+void exit_handling(struct children_list *children) {
+	int i;
 	//kill other processess
-	
+	for (i = 0; i < children->child_count; i++) {
+		kill((children->child_pid)[i], SIGKILL);
+	}
 
 	return;
 }
 
+/* Input: One inputs struct, contains all the information needed to change directory
+ * Output: None, only changes the directory
+ */
 void cd_handling(struct inputs *commands) {
 	if (commands->count == 1) {
-		chdir(getenv("PWD"));		
+		chdir(getenv("HOME"));		
 	}
-	else {
-		//absolute
-
-			
+	else {	
 		//relative	
 		chdir((commands->arg)[1]);
 	}
@@ -71,18 +95,50 @@ void cd_handling(struct inputs *commands) {
 	return;
 }
 
-void status_handling() {
-	
+/* Input: A pointer to the status output of the most recent wait() command from run foreground process
+ * Output: posts to STDOUT the status number of what terminated the most recent foreground process
+ */
+void status_handling(int* recent_foreground) {
+	int status;
+
+
+	if (recent_foreground == NULL) {
+		//no foreground proccesses ran, default to 0
+		
+		printf("\nexit value: 0\n");
+		fflush(stdout);
+	}	
+	else {	
+		//check last foreground process
+		if (WIFEXITED(*recent_foreground)) {
+			status = WEXITSTATUS(*recent_foreground);	
+		}
+		else if (WIFSIGNALED(*recent_foreground)){
+			status = WTERMSIG(*recent_foreground);
+		}
+		else {
+			printf("\n Error, foreground child somehow not terminated");
+			fflush(stdout);
+		}
+
+		printf("\nexit value: %i\n", status);
+		fflush(stdout);	
+	}
 	
 	return;
 }
+
+/* Input: inputs struct holding the processed user input, the list of to-be terminated background children
+ * Output: Runs the command specificed in comamnds in the background, saves this new child's pid to the children list
+ */
 
 void run_process_background(struct inputs *commands, struct children_list *children) {
 	int output_fd;
 	int input_fd;
 	int result;
+	struct sigaction SIGTSTP_action = {{0}};
 
-	//prep the command
+	//prep the command to work with execv
 	char temp[500] = "/bin/\0";
 	strcat(temp,(commands->arg)[0]);
 	
@@ -94,8 +150,11 @@ void run_process_background(struct inputs *commands, struct children_list *child
 		exit(1);
 		break;
 	case 0: 
-		
-		//redirection
+		//reset SIGTSTP handling
+		SIGTSTP_action.sa_handler = SIG_IGN;
+		sigaction(SIGTSTP, &SIGTSTP_action, NULL);
+
+		//giant if/else statments dealing with redirecting to chose file OR to /dev/null if not specified
 		if ((commands->output) != NULL) {
 			//open the output files	
 			output_fd = open((commands->output), O_WRONLY | O_TRUNC | O_CREAT, 0640);
@@ -150,7 +209,7 @@ void run_process_background(struct inputs *commands, struct children_list *child
 				exit(1);
 			}
 
-			//redirect the 
+			//redirect the to /dev/null 
 			result = dup2(input_fd,0);
 			if (result == -1) {
 				printf("cannot redirect /dev/null for input\n");		
@@ -174,12 +233,13 @@ void run_process_background(struct inputs *commands, struct children_list *child
 	}	
 
 	return;
-
-
-
 }
 
-void run_process_foreground(struct inputs *commands) {
+/* input: inputs strctu containing the processed user input, and a pointer to the value of the most recent foreground termination status
+ * output: forks and runs a process and waits for it to terminate
+ * Note: the switch part structure is copied from the exploration segment on forking and exec()ing children
+ */
+void run_process_foreground(struct inputs *commands, int *recent_foreground) {
 	int child_status;
 	int output_fd;
 	int input_fd;
@@ -202,8 +262,6 @@ void run_process_foreground(struct inputs *commands) {
 		//set signal handlers for foreground child
 		SIGINT_action.sa_handler = SIG_DFL;
 		sigaction(SIGINT, &SIGINT_action, NULL);
-		
-
 
 		//redirection
 		if ((commands->output) != NULL) {
@@ -249,23 +307,30 @@ void run_process_foreground(struct inputs *commands) {
 		if (WIFSIGNALED(child_status)){
 			printf("child %i killed by signal %i\n",spawn_pid,WTERMSIG(child_status));
 		}
-		
+		(*recent_foreground) = child_status;
 	}	
 
 	return;
 }
 
-void run_process(struct inputs *commands, struct children_list *children) {
+/* input: inputs struct contaiing the processed user input, a children list struct to keep track of background processes, and a pointer to the most recent foreground process termination
+ * Output: none, simply calls between running the process in the background or foreground
+ */
 
+void run_process(struct inputs *commands, struct children_list *children, int *recent_foreground) {
 	//split between foreground and background
-	if (commands->background) {
+	if ((commands->background) && (!SIGTSTP_mode)) {
 		run_process_background(commands, children);
 	}
 	else {
-		run_process_foreground(commands);
+		run_process_foreground(commands, recent_foreground);
 	}
-		
 }
+
+/* Input: input struct containing the processed and organized user input
+ * Output: A inputs struct ready to be carried out
+ * Note: takes care of checking if the command is a background/foreground rpocess, if it is a comment, and any redirection	
+ */
 
 struct inputs *interpret_input(struct inputs *command) {
 	char **arguments;
@@ -281,7 +346,7 @@ struct inputs *interpret_input(struct inputs *command) {
 	(command->ignore) = FALSE;
 
 	//check if this command should be ignored (either a comment or empty)
-	if (!strcmp(((command->arg)[0]),"#")) {
+	if (*((command->arg)[0]) == '#') {
 		command->ignore = TRUE;
 		return command;
 	}
@@ -318,7 +383,7 @@ struct inputs *interpret_input(struct inputs *command) {
 	}
 
 	//check if it is a background process
-	temp = strcmp(((command->arg)[(command->count)-1]),"$");	
+	temp = strcmp(((command->arg)[(command->count)-1]),"&");	
 	if (!temp) {
 		command->background = TRUE;
 		(command->arg)[(command->count)-1] = NULL;
@@ -341,16 +406,15 @@ struct inputs *interpret_input(struct inputs *command) {
 		command->count = command->count - 2;
 		command->arg = arguments;
 	}
-	//else we don't need to alter command
-
-	/*
-	printf("output: %s\n",command->output);
-	printf("input: %s\n", command->input);
-	*/
-	//printf("background: %i\n", command->background);
+	//else we don't need to alter commands
+	
 	return command;
 }
 
+/* Input: an inputs struct that has been organized
+ * Output: an inputs struct that has been organized and processed
+ * Note: This function takes care of the variable expansion part of the project 
+ */
 struct inputs *process_input(struct inputs *commands) {
 	int i;
 	char *str_location;
@@ -398,6 +462,10 @@ struct inputs *process_input(struct inputs *commands) {
 	return commands;
 }
 
+/* Input: A c string containing the user input
+ * Output: a inputs struct with the args variable filled out
+ * Note: breaks up the c string into parts, changes the newline from getline() to a null terminator, and adds a NULL to the end for when the process is executed
+ */
 struct inputs *organize_input(char *user_input) {
 	char *token;
 	char *saveptr = NULL;
@@ -440,19 +508,14 @@ struct inputs *organize_input(char *user_input) {
 	(command->arg)[count] = NULL;
 	
 
-	//checker that inputs were read correctly
-	/*
-	int i;
-	for(i = 0; i < count; i++) {
-		printf("%s\n",(command->arg)[i]);
-	}
-	*/
-
 	return command;
 }
 
- 
-
+ /* Input: none
+ *  Output: None
+ * Note: Menu() takes care of all the looping of prompting and taking user inputs
+ * Included is also also the loop to kill any zombie background children
+ */
 void menu() {
 	int loop;
 	int i;
@@ -462,6 +525,7 @@ void menu() {
 	struct inputs *commands;
 	struct children_list *children;
 	int child_status;
+	int *recent_foreground = malloc(sizeof(int));
 
 	children = malloc(sizeof(struct children_list));
 	children->child_pid = malloc(sizeof(int)*500);
@@ -474,17 +538,31 @@ void menu() {
 		loop = TRUE;
 		child_status = -1;
 
-		//check for children to kill
+		//check for children to kill, no zombies allowed. note to self to put this in its own function in the future.
 		for (i = 0; i < children->child_count; i++) {
 			waitpid((children->child_pid)[i], &child_status, WNOHANG);
-			//if a child was terminated, print what happened
+			//if a child was terminated, print what happened. Do this for both normal and abnormal terminations
 			if (WIFEXITED(child_status)) {
 				printf("\nbackground pid %i has been killed with status %d\n", (children->child_pid)[i], WEXITSTATUS(child_status));
 				//shift around the child_pid array. First in a safe way, then in a panic way.
 				if (children->child_count == 1) {
 					(children->child_pid)[0] = 0;
 					(children->child_count) = 0; 
-					printf("\ndone\n)");
+				}
+				else {
+					for (j = i; j < children->child_count; j++) {
+						(children->child_pid)[j] = (children->child_pid)[j+1];
+					}
+					(children->child_count)--;
+					i--;
+				}
+			}
+			else if(WIFSIGNALED(child_status)) {
+				printf("\n background pid %i has been killed with status %d\n", (children->child_pid)[i], WTERMSIG(child_status));
+				//shift around the child_pid array. first in a safe way, then in a panic way
+				if (children->child_count == 1) {
+					(children->child_pid)[0] = 0;
+					(children->child_count) = 0; 
 				}
 				else {
 					for (j = i; j < children->child_count; j++) {
@@ -501,47 +579,43 @@ void menu() {
 
 		//accept input
 		user_input = malloc(max_size*sizeof(char));
-		getline(&user_input,&max_size,stdin);
-		
-	
-		
-
+		getline(&user_input,&max_size,stdin);		
 
 		//process input
 		commands = organize_input(user_input);		
 		commands = process_input(commands);
 		commands = interpret_input(commands);
 
+		// choose between the prebuilt functions, ignoring the command, and passing it to be excuted
 		if ((!(strcmp((commands->arg)[0],"exit")))){
-			exit_handling();
+			exit_handling(children);
 			loop = FALSE;
 		}
-		else if ((!(strcmp((commands->arg)[0],"cd\n")) || !strcmp((commands->arg)[0],"cd"))) {
+		else if ((!strcmp((commands->arg)[0],"cd"))) {
 			cd_handling(commands);
 		}
-		else if (((!strcmp((commands->arg)[0],"status\n")) || !strcmp((commands->arg)[0],"status"))) {
-			status_handling();
+		else if ((!strcmp((commands->arg)[0],"status"))) {
+			status_handling(recent_foreground);
 		}
 		else if (commands->ignore) {
-			
+			//ignore the command
 		}
 		else {
-			run_process(commands,children);
-			//int i;
-			//for (i = 0; i < commands->count; i++) {
-			//	printf("%s\n",(commands->arg)[i]);
-			//}	
+			run_process(commands,children,recent_foreground);
 		}
-
+		//free user_input before next time
 		free(user_input);
 	} while(loop);
 
 	//free the children
 	free(children->child_pid);
 	free(children);
+	free(recent_foreground);
 	return;
 }
 
+// Main function, just used to ready the signal handlers for the general process
+// After that calls menu()
 int main(){
 
 	//in general, ignore sig_int
@@ -553,9 +627,7 @@ int main(){
 	struct sigaction SIGTSTP_action = {{0}};
 	SIGTSTP_action.sa_handler = handle_SIGTSTP;
 	SIGTSTP_action.sa_flags = SA_RESTART;
-	sigaction(SIGTSTP, &SIGTSTP_action, NULL);
-
-	
+	sigaction(SIGTSTP, &SIGTSTP_action, NULL);	
 
 	//start fuction
 	menu();
