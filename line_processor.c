@@ -160,13 +160,21 @@ void *plus_sign_thread(void *args) {
 		pthread_mutex_unlock(&m_seperator_plus);	
 
 		//now process temp
-		//inner loop to find all cases of ++
+		//inner loop to find all cases of ++ in the string
 		inner_loop = TRUE;
 		do {
 			saveptr = NULL;
 			location = strstr(string, "++");
 			if (location == NULL) {
 				inner_loop = FALSE;
+			}
+			//backup case since strtok_r crashes if it is empty for ++ being the first part of an input
+			else if (strncmp(string,"++",2) == 0) {
+				strcpy(temp, "");
+				strcat(temp, "^");
+				token = strtok_r(string, "\0", &saveptr);
+				strcat(temp,token+2);
+				strcpy(string,temp);
 			}
 			else {
 				token = strtok_r(string, "++", &saveptr);
@@ -209,7 +217,8 @@ void *line_seperator_thread(void *args) {
 
 	//allocate temp
 	temp = malloc(sizeof(char)*MAX_input_length);
-	
+
+	//initialize the loop that doesn't really get used	
 	stop_found = FALSE;
 
 	//outerloop until STOP is found
@@ -257,9 +266,7 @@ void *line_seperator_thread(void *args) {
 		pthread_mutex_unlock(&m_seperator_plus);			
 	} while(!stop_found);
 
-	//free data
-	free(temp);
-
+	//
 	return args;
 }
 
@@ -277,7 +284,7 @@ void *input_thread(void *args) {
 	input = malloc(sizeof(char)*MAX_input_length);
 
 	//initializ the needed values
-	max_size = 1001;
+	max_size = MAX_input_length;
 	//outer loop until STOP processing line	
 	do {
 		stop_found = FALSE;
@@ -302,8 +309,8 @@ void *input_thread(void *args) {
 	//free memory
 	free(input);
 
-
 	return args;
+
 }
 
 /* Input: none
@@ -365,7 +372,7 @@ void setup() {
 	pthread_join(plus_t, NULL);
 	pthread_join(output_t, NULL);
 
-	//free the imporisoned memory
+	//free the imprisoned memory
 	for (i = 0; i < 50; i++) {
 		free((input_seperator->string)[i]);	
 		free((seperator_plus->string)[i]);
