@@ -42,9 +42,7 @@ void setupAddressStruct(struct sockaddr_in* address,
 		exit(0); 
 	}
 	// Copy the first IP address from the DNS entry to sin_addr.s_addr
-	memcpy((char*) &address->sin_addr.s_addr, 
-			hostInfo->h_addr_list[0],
-			hostInfo->h_length);
+	memcpy((char*) &address->sin_addr.s_addr, hostInfo->h_addr_list[0], hostInfo->h_length);
 
 }
 
@@ -110,6 +108,7 @@ void read_message(int length, int socketFD) {
 			strcat(temp, message);
 			mistake = TRUE;			
 			message_read = FALSE;			
+			memset(message, '\0', length+1);		
 		}
 	} while(!message_read);
 
@@ -142,7 +141,7 @@ void send_message(char *message, int length, int socketFD){
 		//if message not fully sent, begin to loop		
 		if (chars_written < (length - completed)){
 			message_sent = FALSE;
-			completed = completed + length;
+			completed = completed + chars_written;
 		}
 	} while (!message_sent);
 
@@ -157,11 +156,12 @@ void send_message(char *message, int length, int socketFD){
 int main(int argc, char *argv[]) {
 	int socketFD, charsWritten;
 	int i;
+	int check;
+	int message;
 	char *plaintext;
 	char *key;
 	int key_length;
 	int plaintext_length;
-	int check;
 	struct sockaddr_in serverAddress;
 
 	// Check usage & args
@@ -202,6 +202,21 @@ int main(int argc, char *argv[]) {
 		error("CLIENT: ERROR connecting");
 	}
 
+	//check if connected to correct server
+	check = recv(socketFD, &message, sizeof(int),0);
+	if (check < 0) {
+		error("CLIENT: failed to check if connectiong to correct server");
+	}
+	if (message == 0) {
+		message = 0;
+		send(socketFD, &message, sizeof(int), 0);
+		error("CLIENT: enc client cannot connect to dev server");
+	} 
+	else {
+		message = 1;	
+		send(socketFD, &message, sizeof(int), 0);
+	}
+	
 	//send message lengths
 	key_length = strlen(key);
 	plaintext_length = strlen(plaintext);

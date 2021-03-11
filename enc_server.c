@@ -26,6 +26,7 @@ void setupAddressStruct(struct sockaddr_in* address, int portNumber){
 	address->sin_port = htons(portNumber);
 	// Allow a client at any address to connect to this server
 	address->sin_addr.s_addr = INADDR_ANY;
+	
 }
 
 /* Input: length of message to read, socket to read from
@@ -59,6 +60,7 @@ char *read_message(int length, int socket_fd) {
 			strcat(temp,message);		
 			mistake = TRUE;
 			message_read = FALSE;
+			memset(message, '\0', length+1);
 		}
 	} while(!message_read);
 
@@ -88,7 +90,7 @@ void send_message(char *message, int length, int socket_fd) {
 		//if message not full sent, begin to loop
 		if (chars_written < (length - completed)) {
 			message_sent = FALSE;
-			completed = completed + length;
+			completed = completed + chars_written;
 		}
 	} while(!message_sent);
 
@@ -183,6 +185,8 @@ void handle_forking(int connection_socket) {
  */
 int main(int argc, char *argv[]){
 	int connectionSocket;
+	int check;
+	int message;
 	struct sockaddr_in serverAddress, clientAddress;
 	socklen_t sizeOfClientInfo = sizeof(clientAddress);
 
@@ -207,21 +211,36 @@ int main(int argc, char *argv[]){
 	}
 	
 	while(1) {
-	// Start listening for connetions. Allow up to 5 connections to queue up
-	listen(listenSocket, 5); 
-
-	// Accept a connection, blocking if one is not available until one connects
+		// Start listening for connetions. Allow up to 5 connections to queue up
+		listen(listenSocket, 5); 
 	
-	// Accept the connection request which creates a connection socket
-	connectionSocket = accept(listenSocket, (struct sockaddr *)&clientAddress, &sizeOfClientInfo); 
-	if (connectionSocket < 0){
-		error("ERROR on accept");
-	}
+		// Accept a connection, blocking if one is not available until one connects	
+		// Accept the connection request which creates a connection socket
+		connectionSocket = accept(listenSocket, (struct sockaddr *)&clientAddress, &sizeOfClientInfo); 
+		if (connectionSocket < 0){
+			error("ERROR on accept");
+		}
 
-	//fork connection
-	handle_forking(connectionSocket);	
-
-	close(connectionSocket); 
+		//report which server you are
+		message = 1;
+		check = send(connectionSocket, &message, sizeof(int), 0);	
+		if (check < 0) {
+			error("ERROR, failed to send identification int");
+		}
+		check = recv(connectionSocket, &message, sizeof(int), 0);
+		if (check < 0) {
+			error("ERROR, failed to recieve identification int");
+		}
+		//if the client was correct, move to forking. Otherwise close socket.
+		if (message == 1) {
+			//fork connection
+			handle_forking(connectionSocket);	
+	
+			close(connectionSocket); 
+		}
+		else {
+			close(connectionSocket);
+		}
 	}
 	// Close the listening socket
 	close(listenSocket); 

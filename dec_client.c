@@ -111,7 +111,7 @@ void read_message(int length, int socketFD) {
 			strcat(temp, message);
 			mistake = TRUE;			
 			message_read = FALSE;
-			
+			memset(message, '\0', length+1);		
 		}
 	} while(!message_read);
 
@@ -144,7 +144,7 @@ void send_message(char *message, int length, int socketFD){
 		message_sent = TRUE;
 		//if not full message is sent, begin to loop
 		if (chars_written < (length - completed)){
-			completed = completed + length;
+			completed = completed + chars_written;
 			message_sent = FALSE;
 		}
 	} while (!message_sent);
@@ -160,6 +160,7 @@ void send_message(char *message, int length, int socketFD){
 int main(int argc, char *argv[]) {
 	int socketFD, charsWritten;
 	int i;
+	int message;
 	char *code;
 	char *key;
 	int key_length;
@@ -203,6 +204,22 @@ int main(int argc, char *argv[]) {
 	// Connect to server
 	if (connect(socketFD, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0){
 		error("CLIENT: ERROR connecting");
+	}
+
+	//check if connected to correct server
+	check = recv(socketFD, &message, sizeof(int),0);
+	if (check < 0) {
+		error("CLIENT: failed to check if connectiong to correct server");
+	}
+	if (message == 1) {
+		message = 0;
+		send(socketFD, &message, sizeof(int), 0);
+		error("CLIENT: dec client cannot connect to enc server");
+	} 
+	else {
+		message = 1;
+		send(socketFD, &message, sizeof(int), 0);
+
 	}
 
 	//send message lengths

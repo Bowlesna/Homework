@@ -6,6 +6,9 @@
 #define TRUE 1
 #define FALSE 0
 
+/* Input: number of characters for the key
+ * Output: a line of randomized characters A-Z and spaces equal to the number input
+ */
 int main(int argc,char *argv[]) {
 	int i;
 	int temp;
