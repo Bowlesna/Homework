@@ -132,10 +132,11 @@ fn main() {
     let t1 = thread::spawn(move || map_data(&p1));
     let t2 = thread::spawn(move || map_data(&p2));
 
-	  
+    //obation values from those threads	  
     let r1 = t1.join().unwrap(); 
     let r2 = t2.join().unwrap();
 	
+    //add the values to the intermediate_sums vector
     intermediate_sums.push(r1);
     intermediate_sums.push(r2);
 
